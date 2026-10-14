@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1226">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Peso por foto</title>
+<style>
+:root{--bg:#0b1226;--card:#141d38;--tx:#e8eefc;--mut:#8fa0c8;--ok:#00f5a0;--cy:#00e5ff;--wa:#ffb020;--bad:#ff3d9a;--ln:#26335c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px system-ui,sans-serif;padding:14px 14px 90px;max-width:620px;margin:auto}
+h1{font-size:20px;margin:6px 0 2px}h2{font-size:15px;margin:0 0 8px;color:var(--cy)}
+.mut{color:var(--mut);font-size:13px;line-height:1.4}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:14px;margin:12px 0}
+.tabs{display:flex;gap:6px;margin:10px 0}
+.tabs button{flex:1;padding:10px 4px;border-radius:10px;border:1px solid var(--ln);background:var(--card);color:var(--mut);font-size:14px}
+.tabs button.on{color:var(--bg);background:var(--cy);border-color:var(--cy);font-weight:700}
+.btn,button.b{display:inline-block;padding:11px 14px;border-radius:10px;border:1px solid var(--ln);background:#1b2750;color:var(--tx);font-size:15px;margin:3px 3px 3px 0;cursor:pointer}
+.btn.p,button.p{background:var(--ok);color:#06231a;border-color:var(--ok);font-weight:700}
+button.d{color:var(--bad)}
+input,select,textarea{width:100%;padding:10px;border-radius:9px;border:1px solid var(--ln);background:#0e1730;color:var(--tx);font-size:16px;margin:3px 0 8px}
+label.l{font-size:12px;color:var(--mut);display:block}
+.row{display:flex;gap:8px}.row>*{flex:1}
+#wrap{overflow:auto;border-radius:12px;border:1px solid var(--ln);background:#000;max-height:70vh}
+canvas{display:block;touch-action:pan-x pan-y pinch-zoom;width:100%}
+.big{font-size:34px;font-weight:800;color:var(--ok)}
+.warn{color:var(--wa)}.bad{color:var(--bad)}.ok{color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:5px 4px;border-bottom:1px solid var(--ln);text-align:left}
+.it{display:flex;gap:10px}.it img{width:92px;height:70px;object-fit:cover;border-radius:8px;background:#000}
+[hidden]{display:none!important}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;background:#3b2a05;color:var(--wa);border:1px solid var(--wa)}
+</style></head><body>
+<h1>📏 Peso por foto</h1>
+<div class="mut">Hace con la foto lo que harías con una cinta métrica, y calcula el peso con la fórmula de Schaeffer. <b class="warn">Es un peso ESTIMADO: no lo uses para dosificar medicamentos.</b></div>
+
+<div class="tabs">
+  <button id="tb-medir" class="on" onclick="ir('medir')">Medir</button>
+  <button id="tb-guard" onclick="ir('guard')">Guardadas</button>
+  <button id="tb-calib" onclick="ir('calib')">Calibrar</button>
+  <button id="tb-ayuda" onclick="ir('ayuda')">Ayuda</button>
+</div>
+
+<!-- ================= MEDIR ================= -->
+<section id="t-medir">
+  <div class="card">
+    <div class="row">
+      <label class="btn p">📷 Tomar foto<input id="f-cam" type="file" accept="image/*" capture="environment" hidden></label>
+      <label class="btn">🖼 Galería<input id="f-gal" type="file" accept="image/*" hidden></label>
+    </div>
+    <label class="l">Largo REAL del objeto de referencia que sale en la foto (cm)</label>
+    <input id="refcm" type="number" inputmode="decimal" value="100" min="10" step="any">
+    <div class="mut">Un palo o tubo de largo conocido, puesto <b>pegado al animal, a su altura y paralelo al suelo</b>. Mídelo con cinta: no uses un largo "a ojo".</div>
+  </div>
+
+  <div id="wrap" hidden><canvas id="cv"></canvas></div>
+
+  <div class="card" id="paso-card" style="position:sticky;bottom:8px;z-index:5;box-shadow:0 -6px 18px #000a" hidden>
+    <h2 id="paso-n">Paso</h2>
+    <div id="paso-t"></div>
+    <div style="margin-top:8px">
+      <button class="b" onclick="deshacer()">↩ Deshacer punto</button>
+      <button class="b" onclick="reiniciar()">🗑 Empezar de nuevo</button>
+      <button class="b" onclick="zoom(-1)">➖</button><button class="b" onclick="zoom(1)">➕</button>
+    </div>
+  </div>
+
+  <div class="card" id="res" hidden>
+    <h2>Resultado</h2>
+    <div class="big" id="r-peso">—</div>
+    <div id="r-det" class="mut"></div>
+    <div id="r-av"></div>
+  </div>
+
+  <div class="card" id="guardar" hidden>
+    <h2>Guardar esta medición</h2>
+    <label class="l">Nombre o caravana del animal</label><input id="g-animal" placeholder="Ej. Luna">
+    <div class="row">
+      <div><label class="l">Categoría</label>
+        <select id="g-cat"><option>Vaca</option><option>Vaquilla</option><option>Ternera</option><option>Ternero</option><option>Toro</option><option>Novillo</option></select></div>
+      <div><label class="l">Perímetro REAL con cinta (cm), si lo mediste</label><input id="g-ptreal" type="number" inputmode="decimal" step="any"></div>
+    </div>
+    <label class="l">Peso REAL en báscula (kg), si lo pesaste</label><input id="g-pesoreal" type="number" inputmode="decimal" step="any">
+    <label class="l">Nota</label><input id="g-nota" placeholder="Ej. parada en el corral, buena luz">
+    <button class="b p" onclick="guardar()">💾 Guardar con la foto</button>
+    <div class="mut">Guarda la foto junto a los datos. Mientras más animales guardes con su peso real, mejor se podrá calibrar y, más adelante, entrenar un modelo propio.</div>
+  </div>
+</section>
+
+<!-- ================= GUARDADAS ================= -->
+<section id="t-guard" hidden>
+  <div class="card">
+    <button class="b" onclick="exportarCSV()">⬇ Descargar CSV</button>
+    <button class="b" onclick="exportarZIP()">⬇ Descargar fotos + datos (ZIP)</button>
+    <div class="mut">Las mediciones viven solo en este celular. Descarga una copia de vez en cuando.</div>
+  </div>
+  <div id="lista"></div>
+</section>
+
+<!-- ================= CALIBRAR ================= -->
+<section id="t-calib" hidden>
+  <div class="card">
+    <h2>Razón perímetro ÷ altura del pecho (k)</h2>
+    <div class="mut">Desde una foto de costado se ve la <b>altura del pecho</b>, pero no el <b>perímetro</b>. La app calcula perímetro = k × altura del pecho. Para tus animales, k se calibra con mediciones guardadas que tengan el perímetro REAL medido con cinta.</div>
+    <div id="k-info" style="margin:10px 0"></div>
+    <div class="row"><input id="k-manual" type="number" step="0.01" inputmode="decimal" placeholder="k manual"><button class="b" onclick="kManual()">Usar este k</button></div>
+    <button class="b p" onclick="calibrarK()">Calcular k con mis mediciones</button>
+  </div>
+  <div class="card">
+    <h2>¿Qué tan bien está midiendo?</h2>
+    <div id="precision" class="mut">—</div>
+  </div>
+</section>
+
+<!-- ================= AYUDA ================= -->
+<section id="t-ayuda" hidden>
+  <div class="card"><h2>Cómo tomar la foto</h2>
+    <ol class="mut" style="padding-left:18px">
+      <li>El animal <b>quieto y de costado</b>, con la cámara a la altura de su barriga (ni de arriba ni de abajo) y <b>perpendicular</b> a su cuerpo.</li>
+      <li>Pon el palo de referencia en el suelo pegado a sus patas, paralelo al cuerpo, a la misma distancia de la cámara.</li>
+      <li>Que se vea el animal completo, de la nariz a la cola, y el palo entero.</li>
+      <li>Patas parejas, cabeza en posición natural, sin estirar el cuello.</li>
+    </ol></div>
+  <div class="card"><h2>Qué se mide</h2>
+    <div class="mut">Largo del cuerpo = de la punta del hombro a la punta de la nalga. Altura del pecho = en línea recta, del lomo (justo detrás de la pata delantera) al pecho por abajo.<br><br>
+    <b>Fórmula (Schaeffer):</b> peso (kg) = perímetro × perímetro × largo ÷ 10.838, con las medidas en cm.<br><br>
+    <b>Perímetro:</b> si lo mediste con cinta, escríbelo al guardar y se usa ese. Si no, la app lo estima como k × altura del pecho (ver «Calibrar»).</div></div>
+  <div class="card"><h2>Límites honestos</h2>
+    <div class="mut">• El resultado es una <b>estimación</b>; la fórmula no trae margen de error y la foto agrega el suyo (perspectiva, postura).<br>
+    • En terneros pequeños la fórmula puede fallar: compáralos con báscula.<br>
+    • Hasta que compares con báscula o cinta no sabes cuánto error tienes: usa «Calibrar».<br>
+    • <b>No uses este peso para calcular dosis de medicamentos.</b> Para eso, báscula o el veterinario.</div></div>
+</section>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const PASOS = [
+  ["Referencia, extremo 1", "Toca <b>un extremo</b> del palo de referencia."],
+  ["Referencia, extremo 2", "Toca el <b>otro extremo</b> del palo."],
+  ["Largo, inicio", "Toca la <b>punta del hombro</b> (donde el hombro se junta con el pecho, arriba de la pata delantera)."],
+  ["Largo, final", "Toca la <b>punta de la nalga</b> (el hueso de atrás, donde termina el cuerpo)."],
+  ["Altura del pecho, arriba", "Toca el <b>lomo</b>, justo encima de la parte de atrás de la pata delantera."],
+  ["Altura del pecho, abajo", "Toca el <b>pecho por abajo</b>, en línea recta debajo del punto anterior."]
+];
+const COL = ["#00e5ff","#00e5ff","#00f5a0","#00f5a0","#ffb020","#ffb020"];
+let img = null, pts = [], zoomN = 1, last = null;
+const cv = $("cv"), ctx = cv.getContext("2d");
+
+/* ---------- ajustes ---------- */
+function getK(){ const v = parseFloat(localStorage.getItem("k_pecho")); return isFinite(v) && v > 0 ? v : 2.5; }
+function kCalibrado(){ return localStorage.getItem("k_calibrado") === "1"; }
+
+/* ---------- cálculo (puro) ---------- */
+function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
+function schaeffer(pt, lc){ return pt * pt * lc / 10838; }
+function calcular(p, refcm, ptReal, k){
+  if (p.length < 6 || !(refcm > 0)) return null;
+  const esc = refcm / dist(p[0], p[1]);
+  const lc = dist(p[2], p[3]) * esc, prof = dist(p[4], p[5]) * esc;
+  const usaCinta = isFinite(ptReal) && ptReal > 0;
+  const pt = usaCinta ? ptReal : k * prof;
+  return { esc, lc, prof, pt, modo: usaCinta ? "cinta" : "foto", k, peso: schaeffer(pt, lc) };
+}
+
+/* ---------- foto ---------- */
+async function cargarFoto(file){
+  if (!file) return;
+  let bmp;
+  try { bmp = await createImageBitmap(file, {imageOrientation: "from-image"}); }
+  catch(e){ bmp = await new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = URL.createObjectURL(file); }); }
+  const w0 = bmp.width, h0 = bmp.height, m = Math.min(1, 1400 / Math.max(w0, h0));
+  cv.width = Math.round(w0 * m); cv.height = Math.round(h0 * m);
+  ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+  img = document.createElement("canvas"); img.width = cv.width; img.height = cv.height;
+  img.getContext("2d").drawImage(cv, 0, 0);
+  pts = []; zoomN = 1; $("wrap").hidden = false; $("paso-card").hidden = false;
+  cv.style.width = "100%"; actualizar();
+}
+$("f-cam").onchange = e => cargarFoto(e.target.files[0]);
+$("f-gal").onchange = e => cargarFoto(e.target.files[0]);
+
+function zoom(d){ zoomN = Math.min(4, Math.max(1, zoomN + d)); cv.style.width = (zoomN * 100) + "%"; actualizar(); }
+function deshacer(){ pts.pop(); actualizar(); }
+function reiniciar(){ pts = []; actualizar(); }
+
+/* ---------- toques ---------- */
+let down = null;
+cv.addEventListener("pointerdown", e => { down = {x: e.clientX, y: e.clientY, t: Date.now()}; });
+cv.addEventListener("pointercancel", () => { down = null; });
+cv.addEventListener("pointerup", e => {
+  if (!down || !img) return;
+  const mov = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = Date.now() - down.t;
+  down = null;
+  if (mov > 10 || dt > 700 || pts.length >= 6) return;
+  const r = cv.getBoundingClientRect();
+  pts.push({x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height});
+  actualizar();
+});
+
+/* ---------- dibujo ---------- */
+function dibujar(){
+  if (!img) return;
+  ctx.clearRect(0, 0, cv.width, cv.height); ctx.drawImage(img, 0, 0);
+  const vis = cv.getBoundingClientRect().width || cv.width;          // el punto mide lo mismo en pantalla con cualquier zoom
+  const r = 11 * cv.width / vis;
+  ctx.lineWidth = r / 2;
+  [[0,1],[2,3],[4,5]].forEach(([a, b]) => {
+    if (pts[b]) { ctx.strokeStyle = COL[a]; ctx.beginPath(); ctx.moveTo(pts[a].x, pts[a].y); ctx.lineTo(pts[b].x, pts[b].y); ctx.stroke(); }
+  });
+  pts.forEach((p, i) => {
+    ctx.fillStyle = COL[i]; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#000"; ctx.lineWidth = r / 5; ctx.stroke();
+    ctx.fillStyle = "#000"; ctx.font = "bold " + (r * 1.3) + "px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(i + 1, p.x, p.y);
+  });
+}
+
+function actualizar(){
+  dibujar();
+  const n = pts.length;
+  $("paso-n").textContent = n < 6 ? `Paso ${n + 1} de 6: ${PASOS[n][0]}` : "Listo: 6 de 6";
+  $("paso-t").innerHTML = n < 6 ? PASOS[n][1] : "Revisa los puntos. Si alguno quedó mal, usa «Deshacer punto».";
+  const ref = parseFloat($("refcm").value), ptr = parseFloat($("g-ptreal").value);
+  last = calcular(pts, ref, ptr, getK());
+  $("res").hidden = !last; $("guardar").hidden = !last;
+  if (!last) return;
+  $("r-peso").textContent = "≈ " + last.peso.toFixed(0) + " kg";
+  const sin = last.modo === "foto" && !kCalibrado();
+  $("r-det").innerHTML = `Largo del cuerpo: <b>${last.lc.toFixed(0)} cm</b> · Altura del pecho: <b>${last.prof.toFixed(0)} cm</b><br>` +
+    `Perímetro usado: <b>${last.pt.toFixed(0)} cm</b> (${last.modo === "cinta" ? "medido con cinta" : "estimado = " + last.k.toFixed(2) + " × altura"})` +
+    (sin ? ` <span class="tag">k SIN calibrar</span>` : "");
+  const av = [];
+  if (last.lc < 60 || last.lc > 260) av.push("El largo sale fuera de lo normal: revisa los puntos 3 y 4 y el largo del palo.");
+  if (last.prof < 20 || last.prof > 110) av.push("La altura del pecho sale fuera de lo normal: revisa los puntos 5 y 6 y el largo del palo.");
+  if (last.lc < 90) av.push("Animal pequeño: la fórmula puede fallar. Compáralo con báscula.");
+  if (sin) av.push("El perímetro se estimó con un k de ejemplo SIN comprobar. Mide con cinta a varios animales y calibra en la pestaña «Calibrar».");
+  const ang = Math.abs(Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x) * 180 / Math.PI);
+  if (Math.min(ang, 180 - ang) > 12) av.push("El palo de referencia sale inclinado: ponlo paralelo al suelo para que la escala sea buena.");
+  $("r-av").innerHTML = av.map(t => `<div class="warn">⚠ ${t}</div>`).join("");
+}
+["refcm", "g-ptreal"].forEach(id => $(id).addEventListener("input", actualizar));
+
+/* ---------- almacenamiento (IndexedDB) ---------- */
+function bd(){ return new Promise((ok, ko) => {
+  const q = indexedDB.open("pesofoto", 1);
+  q.onupgradeneeded = () => q.result.createObjectStore("medidas", {keyPath: "id", autoIncrement: true});
+  q.onsuccess = () => ok(q.result); q.onerror = () => ko(q.error);
+}); }
+async function tx(modo, fn){ const db = await bd(); return new Promise((ok, ko) => {
+  const t = db.transaction("medidas", modo), s = t.objectStore("medidas"); const r = fn(s);
+  t.oncomplete = () => ok(r && r.result); t.onerror = () => ko(t.error);
+}); }
+const todas = () => tx("readonly", s => s.getAll());
+const poner = rec => tx("readwrite", s => s.put(rec));
+const borrar = id => tx("readwrite", s => s.delete(id));
+
+async function guardar(){
+  if (!last || !img) return;
+  const blob = await new Promise(ok => img.toBlob(ok, "image/jpeg", 0.85));
+  const num = id => { const v = parseFloat($(id).value); return isFinite(v) ? v : null; };
+  await poner({ fecha: new Date().toISOString(), animal: $("g-animal").value.trim() || "(sin nombre)", categoria: $("g-cat").value,
+    ref_cm: parseFloat($("refcm").value), puntos: pts.map(p => [Math.round(p.x), Math.round(p.y)]), ancho: img.width, alto: img.height,
+    lc: +last.lc.toFixed(1), prof: +last.prof.toFixed(1), pt_usado: +last.pt.toFixed(1), pt_modo: last.modo, k: last.k,
+    k_calibrado: kCalibrado(), peso_est: +last.peso.toFixed(1), pt_real: num("g-ptreal"), peso_real: num("g-pesoreal"),
+    nota: $("g-nota").value.trim(), foto: blob });
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  ["g-animal", "g-ptreal", "g-pesoreal", "g-nota"].forEach(i => $(i).value = "");
+  reiniciar(); alert("Guardado ✔");
+}
+
+async function pintarLista(){
+  const l = await todas(); l.sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const cont = $("lista"); cont.innerHTML = "";
+  if (!l.length) { cont.innerHTML = '<div class="card mut">Aún no hay mediciones guardadas.</div>'; return; }
+  l.forEach(r => {
+    const d = document.createElement("div"); d.className = "card it";
+    const im = document.createElement("img"); im.src = URL.createObjectURL(r.foto);
+    const t = document.createElement("div"); t.style.flex = "1";
+    const err = r.peso_real ? ` · error ${(100 * (r.peso_est - r.peso_real) / r.peso_real).toFixed(1)} %` : "";
+    t.innerHTML = `<b>${esc(r.animal)}</b> <span class="mut">${esc(r.categoria)} · ${r.fecha.slice(0, 10)}</span><br>` +
+      `Estimado <b>${r.peso_est.toFixed(0)} kg</b>${r.peso_real ? ` · báscula <b>${r.peso_real} kg</b>${err}` : ""}<br>` +
+      `<span class="mut">largo ${r.lc} · pecho ${r.prof} · perímetro ${r.pt_usado} (${r.pt_modo})${r.pt_real ? " · cinta " + r.pt_real : ""}</span>` +
+      (r.nota ? `<br><span class="mut">${esc(r.nota)}</span>` : "") +
+      `<div class="row"><input placeholder="Perímetro real cm" type="number" step="any" id="pr${r.id}" value="${r.pt_real ?? ""}">` +
+      `<input placeholder="Peso real kg" type="number" step="any" id="pw${r.id}" value="${r.peso_real ?? ""}"></div>`;
+    const b1 = document.createElement("button"); b1.className = "b"; b1.textContent = "Guardar pesos reales";
+    b1.onclick = async () => { const n = id => { const v = parseFloat($(id + r.id).value); return isFinite(v) ? v : null; };
+      r.pt_real = n("pr"); r.peso_real = n("pw"); await poner(r); pintarLista(); };
+    const b2 = document.createElement("button"); b2.className = "b d"; b2.textContent = "Borrar";
+    b2.onclick = async () => { if (confirm("¿Borrar esta medición?")) { await borrar(r.id); pintarLista(); } };
+    t.append(b1, b2); d.append(im, t); cont.append(d);
+  });
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+
+/* ---------- calibración ---------- */
+function estadistica(l, k){
+  const conPT = l.filter(r => r.pt_real > 0 && r.prof > 0);
+  const ratios = conPT.map(r => r.pt_real / r.prof);
+  const media = ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null;
+  const sd = ratios.length > 1 ? Math.sqrt(ratios.reduce((a, b) => a + (b - media) ** 2, 0) / (ratios.length - 1)) : null;
+  const conPeso = l.filter(r => r.peso_real > 0);
+  const errFoto = conPeso.map(r => 100 * Math.abs(r.peso_est - r.peso_real) / r.peso_real);
+  const conAmbos = conPeso.filter(r => r.pt_real > 0 && r.lc > 0);
+  const errFormula = conAmbos.map(r => 100 * Math.abs(schaeffer(r.pt_real, r.lc) - r.peso_real) / r.peso_real);
+  const prom = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  return { nPT: conPT.length, media, sd, nPeso: conPeso.length, errFoto: prom(errFoto), nForm: conAmbos.length, errFormula: prom(errFormula) };
+}
+async function pintarCalib(){
+  const l = await todas(), s = estadistica(l, getK());
+  $("k-info").innerHTML = `k actual: <b>${getK().toFixed(2)}</b> ${kCalibrado() ? '<span class="ok">(calibrado con tus datos)</span>' : '<span class="tag">valor de ejemplo, SIN comprobar</span>'}<br>` +
+    `Mediciones con perímetro real: <b>${s.nPT}</b>` + (s.media ? ` → k que resulta: <b>${s.media.toFixed(2)}</b>${s.sd ? ` (±${s.sd.toFixed(2)})` : ""}` : "") +
+    (s.nPT < 10 ? `<div class="warn">⚠ Con menos de 10 animales el k es poco confiable.</div>` : "");
+  $("precision").innerHTML =
+    (s.nPeso ? `Con báscula en <b>${s.nPeso}</b> animal(es): error promedio de la app (foto) = <b>${s.errFoto.toFixed(1)} %</b>.` : "Aún no hay mediciones con peso real de báscula.") +
+    (s.nForm ? `<br>Con cinta + báscula en <b>${s.nForm}</b>: error de la fórmula sola (sin foto) = <b>${s.errFormula.toFixed(1)} %</b>.` : "") +
+    `<br><br>Si el error de la fórmula sola ya es grande, el problema es la fórmula; si es chico pero el de la app es grande, el problema son las mediciones de la foto.`;
+}
+async function calibrarK(){
+  const s = estadistica(await todas(), getK());
+  if (!s.nPT) { alert("Necesitas mediciones guardadas con el perímetro real medido con cinta."); return; }
+  localStorage.setItem("k_pecho", s.media.toFixed(3)); localStorage.setItem("k_calibrado", "1"); pintarCalib(); actualizar();
+}
+function kManual(){
+  const v = parseFloat($("k-manual").value); if (!(v > 0.5 && v < 6)) { alert("Escribe un k entre 0,5 y 6."); return; }
+  localStorage.setItem("k_pecho", String(v)); localStorage.setItem("k_calibrado", "1"); pintarCalib(); actualizar();
+}
+
+/* ---------- exportar ---------- */
+const COLS = ["id","fecha","animal","categoria","ref_cm","lc","prof","pt_usado","pt_modo","k","k_calibrado","peso_est","pt_real","peso_real","nota"];
+function csvDe(l){
+  const c = v => { v = v == null ? "" : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  return COLS.join(",") + "\n" + l.map(r => COLS.map(k => c(r[k])).join(",")).join("\n") + "\n";
+}
+function bajar(blob, nombre){ const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.append(a); a.click(); setTimeout(() => a.remove(), 500); }
+async function exportarCSV(){ bajar(new Blob(["﻿" + csvDe(await todas())], {type: "text/csv"}), "peso_foto_datos.csv"); }
+
+const TABLA = (() => { const t = []; for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8){ let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = TABLA[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function zipSinComprimir(archivos){            // archivos: [{nombre, datos:Uint8Array}]
+  const enc = new TextEncoder(), partes = [], central = []; let off = 0;
+  const ahora = new Date(), hora = (ahora.getHours() << 11) | (ahora.getMinutes() << 5) | (ahora.getSeconds() >> 1),
+        fecha = ((ahora.getFullYear() - 1980) << 9) | ((ahora.getMonth() + 1) << 5) | ahora.getDate();
+  archivos.forEach(a => {
+    const nom = enc.encode(a.nombre), crc = crc32(a.datos), n = a.datos.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, hora, true); lh.setUint16(12, fecha, true); lh.setUint32(14, crc, true); lh.setUint32(18, n, true);
+    lh.setUint32(22, n, true); lh.setUint16(26, nom.length, true); lh.setUint16(28, 0, true);
+    partes.push(new Uint8Array(lh.buffer), nom, a.datos);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, hora, true); ch.setUint16(14, fecha, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, n, true); ch.setUint32(24, n, true); ch.setUint16(28, nom.length, true); ch.setUint32(42, off, true);
+    central.push(new Uint8Array(ch.buffer), nom);
+    off += 30 + nom.length + n;
+  });
+  const tam = central.reduce((s, p) => s + p.length, 0), fin = new DataView(new ArrayBuffer(22));
+  fin.setUint32(0, 0x06054b50, true); fin.setUint16(8, archivos.length, true); fin.setUint16(10, archivos.length, true);
+  fin.setUint32(12, tam, true); fin.setUint32(16, off, true);
+  return new Blob([...partes, ...central, new Uint8Array(fin.buffer)], {type: "application/zip"});
+}
+async function exportarZIP(){
+  const l = await todas(), archivos = [{nombre: "datos.csv", datos: new TextEncoder().encode("﻿" + csvDe(l))}];
+  for (const r of l) {
+    const nom = String(r.animal).replace(/[^\w\-]+/g, "_").slice(0, 30);
+    archivos.push({nombre: `fotos/${r.id}_${nom}.jpg`, datos: new Uint8Array(await r.foto.arrayBuffer())});
+    archivos.push({nombre: `fotos/${r.id}_${nom}.puntos.json`, datos: new TextEncoder().encode(JSON.stringify({puntos: r.puntos, ancho: r.ancho, alto: r.alto, ref_cm: r.ref_cm}))});
+  }
+  bajar(zipSinComprimir(archivos), "peso_foto_" + new Date().toISOString().slice(0, 10) + ".zip");
+}
+
+/* ---------- pestañas ---------- */
+function ir(t){
+  ["medir", "guard", "calib", "ayuda"].forEach(x => { $("t-" + x).hidden = x !== t; $("tb-" + x).classList.toggle("on", x === t); });
+  if (t === "guard") pintarLista(); if (t === "calib") pintarCalib();
+}
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body></html>
